@@ -30,9 +30,9 @@ struct timezone;
 
 extern int gettimeofday(struct timeval *tv, struct timezone *tz);
 extern void timeradd(struct timeval *a, struct timeval *b,
-		     struct timeval *result);
+         struct timeval *result);
 extern void timersub(struct timeval *a, struct timeval *b,
-		     struct timeval *result);
+         struct timeval *result);
 
 extern TCHAR *optarg;
 extern int optind;
@@ -47,7 +47,7 @@ extern int count_processors(void);
 
 static inline char *
 strtok_r(char *strToken, const char *strDelimit, char **context) {
-	return strtok_s(strToken, strDelimit, context);
+  return strtok_s(strToken, strDelimit, context);
 }
 
 #endif
