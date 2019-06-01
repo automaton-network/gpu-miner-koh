@@ -1,11 +1,12 @@
 /*
  * Vanitygen, vanity bitcoin address generator
  * Copyright (C) 2011 <samr7@cs.washington.edu>
+ * Copyright (C) 2019 Asen Kovachev
  *
  * Vanitygen is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Affero General Public License as published by
  * the Free Software Foundation, either version 3 of the License, or
- * any later version. 
+ * any later version.
  *
  * Vanitygen is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -15,6 +16,15 @@
  * You should have received a copy of the GNU Affero General Public License
  * along with Vanitygen.  If not, see <http://www.gnu.org/licenses/>.
  */
+
+// Once a key pair is generated the X coordinate is checked for a pattern match.
+// MASK1 and MASK2 define which of the bits of the first 8 bytes are checked.
+// TARGET1 and TARGET2 define what those bits should be.
+
+#define MASK1   0xFFFFFFFF
+#define TARGET1 0x00000000
+#define MASK2   0xF0000000
+#define TARGET2 0x00000000
 
 /*
  * This file contains an OpenCL kernel for performing certain parts of
@@ -1024,7 +1034,7 @@ test_mod_inverse(__global bignum *inv_out, __global bignum *nums_in,
 #define ACCESS_STRIDE (ACCESS_BUNDLE/BN_NWORDS)
 
 __kernel void
-ec_add_grid(__global bn_word *points_out, __global bn_word *z_heap, 
+ec_add_grid(__global bn_word *points_out, __global bn_word *z_heap,
       __global bn_word *row_in, __global bignum *col_in)
 {
   bignum rx, ry;
@@ -1241,100 +1251,9 @@ hash_ec_point(uint *hash_out, __global bn_word *xy, __global bn_word *zip)
   bn_mul_mont(&c, &c, &zzi);  /* X / Z^2 */
   bn_from_mont(&c, &c);
 
-  wh = compressed_address ? 0x00000002 : 0x00000004;  /* POINT_CONVERSION_[UN]COMPRESSED */
-
-#define hash_ec_point_inner_3(i)    \
-  wl = wh;        \
-  wh = c.d[(BN_NWORDS - 1) - i];    \
-  hash1[i] = (wl << 24) | (wh >> 8);
-
-  bn_unroll(hash_ec_point_inner_3);
-
-  bn_mul_mont(&zzi, &zzi, &zi);  /* 1 / Z^3 */
-
-#define hash_ec_point_inner_4(i)        \
-  c.d[i] = xy[(ACCESS_STRIDE/2) + i*ACCESS_STRIDE];
-
-  bn_unroll(hash_ec_point_inner_4);
-
-  bn_mul_mont(&c, &c, &zzi);  /* Y / Z^3 */
-  bn_from_mont(&c, &c);
-
-  if (!compressed_address) {
-    #define hash_ec_point_inner_5(i)      \
-      wl = wh;          \
-      wh = c.d[(BN_NWORDS - 1) - i];      \
-      hash1[BN_NWORDS + i] = (wl << 24) | (wh >> 8);
-
-    bn_unroll(hash_ec_point_inner_5);
-  } else {
-    if (bn_is_odd(c)) {
-      hash1[0] |= 0x01000000; /* 0x03 for odd y */
-    }
-
-    /*
-     * Put in the last byte + SHA-2 padding.
-     */
-    hash1[8] = wh << 24 | 0x800000;
-    hash1[9] = 0;
-    hash1[10] = 0;
-    hash1[11] = 0;
-    hash1[12] = 0;
-    hash1[13] = 0;
-    hash1[14] = 0;
-    hash1[15] = 33 * 8;
-  }
-
-  /*
-   * Hash the first 64 bytes of the buffer
-   */
-  sha2_256_init(hash2);
-  sha2_256_block(hash2, hash1);
-
-  if (!compressed_address) {
-    /*
-     * Hash the last byte of the buffer + SHA-2 padding
-     */
-    hash1[0] = wh << 24 | 0x800000;
-    hash1[1] = 0;
-    hash1[2] = 0;
-    hash1[3] = 0;
-    hash1[4] = 0;
-    hash1[5] = 0;
-    hash1[6] = 0;
-    hash1[7] = 0;
-    hash1[8] = 0;
-    hash1[9] = 0;
-    hash1[10] = 0;
-    hash1[11] = 0;
-    hash1[12] = 0;
-    hash1[13] = 0;
-    hash1[14] = 0;
-    hash1[15] = 65 * 8;
-    sha2_256_block(hash2, hash1);
-  }
-
-  /*
-   * Hash the SHA-2 result with RIPEMD160
-   * Unfortunately, SHA-2 outputs big-endian, but
-   * RIPEMD160 expects little-endian.  Need to swap!
-   */
-
-#define hash_ec_point_inner_6(i)    \
-  hash2[i] = bswap32(hash2[i]);
-
-  hash256_unroll(hash_ec_point_inner_6);
-
-  hash2[8] = bswap32(0x80000000);
-  hash2[9] = 0;
-  hash2[10] = 0;
-  hash2[11] = 0;
-  hash2[12] = 0;
-  hash2[13] = 0;
-  hash2[14] = 32 * 8;
-  hash2[15] = 0;
-  ripemd160_init(hash_out);
-  ripemd160_block(hash_out, hash2);
+  // Only need the first 8 bytes of the X coordinate of the public key.
+  hash_out[0] = c.d[7];
+  hash_out[1] = c.d[6];
 }
 
 
@@ -1400,49 +1319,25 @@ hash_ec_point_search_prefix(__global uint *found,
           __global bn_word *z_heap,
           __global uint *target_table, int ntargets)
 {
-  uint hash[5];
+  uint hash[2];
   int i, high, low, p, cell, start;
 
   cell = ((get_global_id(1) * get_global_size(0)) + get_global_id(0));
-  start = (((cell / ACCESS_STRIDE) * ACCESS_BUNDLE) +
-     (cell % ACCESS_STRIDE));
+  start = (((cell / ACCESS_STRIDE) * ACCESS_BUNDLE) + (cell % ACCESS_STRIDE));
   z_heap += start;
 
-  start = ((((2 * cell) / ACCESS_STRIDE) * ACCESS_BUNDLE) +
-     (cell % (ACCESS_STRIDE/2)));
+  start = ((((2 * cell) / ACCESS_STRIDE) * ACCESS_BUNDLE) + (cell % (ACCESS_STRIDE/2)));
   points_in += start;
 
   /* Complete the coordinates and hash */
   hash_ec_point(hash, points_in, z_heap);
 
-  /*
-   * Unconditionally byteswap the hash result, because:
-   * - The byte-level convention of RIPEMD160 is little-endian
-   * - We are comparing it in big-endian order
-   */
-#define hash_ec_point_search_prefix_inner_1(i)  \
-  hash[i] = bswap32(hash[i]);
+  // Only check to see if public key itself matches what we need.
+  p = ((hash[0] & MASK1) == TARGET1) && ((hash[1] & MASK2) == TARGET2);
 
-  hash160_unroll(hash_ec_point_search_prefix_inner_1);
-
-  /* Binary-search the target table for the hash we just computed */
-  for (high = ntargets - 1, low = 0, i = high >> 1;
-       high >= low;
-       i = low + ((high - low) >> 1)) {
-    p = hash160_ucmp_g(hash, &target_table[10*i]);
-    low = (p > 0) ? (i + 1) : low;
-    high = (p < 0) ? (i - 1) : high;
-    if (p == 0) {
-      /* For debugging purposes, write the hash value */
-      found[0] = ((get_global_id(1) * get_global_size(0)) +
-            get_global_id(0));
-      found[1] = i;
-
-#define hash_ec_point_search_prefix_inner_2(i)  \
-      found[i+2] = load_be32(hash[i]);
-
-      hash160_unroll(hash_ec_point_search_prefix_inner_2);
-      high = -1;
-    }
+  if (p) {
+    /* For debugging purposes, write the hash value */
+    found[0] = ((get_global_id(1) * get_global_size(0)) + get_global_id(0));
+    found[1] = i;
   }
 }
