@@ -5,7 +5,7 @@
  * Vanitygen is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Affero General Public License as published by
  * the Free Software Foundation, either version 3 of the License, or
- * any later version. 
+ * any later version.
  *
  * Vanitygen is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -423,63 +423,6 @@ vg_output_timing_console(vg_context_t *vcp, double count,
   if (rem < 0)
     rem = 0;
 
-  if (vcp->vc_chance >= 1.0) {
-    prob = 1.0f - exp(-count/vcp->vc_chance);
-
-    if (prob <= 0.999) {
-      p = snprintf(&linebuf[p], rem, "[Prob %.1f%%]",
-             prob * 100);
-      assert(p > 0);
-      rem -= p;
-      if (rem < 0)
-        rem = 0;
-      p = sizeof(linebuf) - rem;
-    }
-
-    for (i = 0; i < sizeof(targs)/sizeof(targs[0]); i++) {
-      targ = targs[i];
-      if ((targ < 1.0) && (prob <= targ))
-        break;
-    }
-
-    if (targ < 1.0) {
-      time = ((-vcp->vc_chance * log(1.0 - targ)) - count) /
-        rate;
-      unit = "s";
-      if (time > 60) {
-        time /= 60;
-        unit = "min";
-        if (time > 60) {
-          time /= 60;
-          unit = "h";
-          if (time > 24) {
-            time /= 24;
-            unit = "d";
-            if (time > 365) {
-              time /= 365;
-              unit = "y";
-            }
-          }
-        }
-      }
-
-      if (time > 1000000) {
-        p = snprintf(&linebuf[p], rem,
-               "[%d%% in %e%s]",
-               (int) (100 * targ), time, unit);
-      } else {
-        p = snprintf(&linebuf[p], rem,
-               "[%d%% in %.1f%s]",
-               (int) (100 * targ), time, unit);
-      }
-      assert(p > 0);
-      rem -= p;
-      if (rem < 0)
-        rem = 0;
-      p = sizeof(linebuf) - rem;
-    }
-  }
-
   if (vcp->vc_found) {
     if (vcp->vc_remove_on_match)
       p = snprintf(&linebuf[p], rem, "[Found %lld/%ld]",
@@ -884,7 +827,7 @@ get_prefix_ranges(int addrtype, const char *pfx, BIGNUM **result,
         BN_free(bnlow);
         bnlow = bnlow2;
         bnlow2 = NULL;
-      }      
+      }
       else if (BN_cmp(bnfloor, bnlow) > 0) {
         /* Low prefix is partly below the floor */
         BN_copy(bnlow, bnfloor);
@@ -1165,12 +1108,12 @@ vg_prefix_add_ranges(avl_root_t *rootp, const char *pattern, BIGNUM **ranges,
       vp2->vp_sibling = vp;
   } else if (vp2) {
     vp->vp_sibling = vp2;
-    vp2->vp_sibling = (master->vp_sibling ? 
+    vp2->vp_sibling = (master->vp_sibling ?
            master->vp_sibling :
            master);
     master->vp_sibling = vp;
   } else {
-    vp->vp_sibling = (master->vp_sibling ? 
+    vp->vp_sibling = (master->vp_sibling ?
           master->vp_sibling :
           master);
     master->vp_sibling = vp;

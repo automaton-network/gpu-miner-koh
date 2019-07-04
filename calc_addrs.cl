@@ -1,20 +1,20 @@
 /*
- * Vanitygen, vanity bitcoin address generator
+ * KoHMiner (based on Vanitygen, vanity bitcoin address generator)
  * Copyright (C) 2011 <samr7@cs.washington.edu>
- * Copyright (C) 2019 Asen Kovachev
+ * Copyright (C) 2019 Asen Kovachev (@asenski, GitHub: akovachev)
  *
- * Vanitygen is free software: you can redistribute it and/or modify
+ * KoHMiner is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Affero General Public License as published by
  * the Free Software Foundation, either version 3 of the License, or
  * any later version.
  *
- * Vanitygen is distributed in the hope that it will be useful,
+ * KoHMiner is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU Affero General Public License for more details.
  *
  * You should have received a copy of the GNU Affero General Public License
- * along with Vanitygen.  If not, see <http://www.gnu.org/licenses/>.
+ * along with KoHMiner.  If not, see <http://www.gnu.org/licenses/>.
  */
 
 // Once a key pair is generated the X coordinate is checked for a pattern match.
@@ -22,9 +22,9 @@
 // TARGET1 and TARGET2 define what those bits should be.
 
 #define MASK1   0xFFFFFFFF
-#define TARGET1 0x00000000
+#define TARGET1 0xFFFFFFFF
 #define MASK2   0xF0000000
-#define TARGET2 0x00000000
+#define TARGET2 0xF0000000
 
 /*
  * This file contains an OpenCL kernel for performing certain parts of
@@ -104,13 +104,6 @@
 #define load_be32(v) bswap32(v)
 #endif
 
-/* Configuration -- maybe I shouldn't be passing this in preproc */
-#ifdef COMPRESSED_ADDRESS
-  __constant bool compressed_address = 1;
-#else
-  __constant bool compressed_address = 0;
-#endif
-
 /*
  * Loop unrolling macros
  *
@@ -123,7 +116,6 @@
  */
 
 /* Explicit loop unrolling */
-#define unroll_5(a) do { a(0) a(1) a(2) a(3) a(4) } while (0)
 #define unroll_8(a) do { a(0) a(1) a(2) a(3) a(4) a(5) a(6) a(7) } while (0)
 #define unroll_1_7(a) do { a(1) a(2) a(3) a(4) a(5) a(6) a(7) } while (0)
 #define unroll_7(a) do { a(0) a(1) a(2) a(3) a(4) a(5) a(6) } while (0)
@@ -146,12 +138,10 @@
 
 /* Conditional loop unrolling */
 #if defined(DEEP_PREPROC_UNROLL)
-#define iter_5(a) unroll_5(a)
 #define iter_8(a) unroll_8(a)
 #define iter_16(a) unroll_16(a)
 #define iter_64(a) unroll_64(a)
 #else
-#define iter_5(a) do {int _i; for (_i = 0; _i < 5; _i++) { a(_i) }} while (0)
 #define iter_8(a) do {int _i; for (_i = 0; _i < 8; _i++) { a(_i) }} while (0)
 #define iter_16(a) do {int _i; for (_i = 0; _i < 16; _i++) { a(_i) }} while (0)
 #define iter_64(a) do {int _i; for (_i = 0; _i < 64; _i++) { a(_i) }} while (0)
@@ -727,271 +717,6 @@ bn_mod_inverse(bignum *r, bignum *n)
   }
 }
 
-/*
- * HASH FUNCTIONS
- *
- * BYTE ORDER NOTE: None of the hash functions below deal with byte
- * order.  The caller is expected to be aware of this when it stuffs
- * data into in the native integer.
- *
- * NOTE #2: Endianness of the OpenCL device makes no difference here.
- */
-
-#define hash256_unroll(a) unroll_8(a)
-#define hash160_unroll(a) unroll_5(a)
-#define hash256_iter(a) iter_8(a)
-#define hash160_iter(a) iter_5(a)
-
-
-/*
- * SHA-2 256
- *
- * CAUTION: Input buffer will be overwritten/mangled.
- * Data expected in big-endian format.
- * This implementation is designed for space efficiency more than
- * raw speed.
- */
-
-__constant uint sha2_init[8] = {
-  0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a,
-  0x510e527f, 0x9b05688c, 0x1f83d9ab, 0x5be0cd19
-};
-
-__constant uint sha2_k[64] = {
-  0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5,
-  0x3956c25b, 0x59f111f1, 0x923f82a4, 0xab1c5ed5,
-  0xd807aa98, 0x12835b01, 0x243185be, 0x550c7dc3,
-  0x72be5d74, 0x80deb1fe, 0x9bdc06a7, 0xc19bf174,
-  0xe49b69c1, 0xefbe4786, 0x0fc19dc6, 0x240ca1cc,
-  0x2de92c6f, 0x4a7484aa, 0x5cb0a9dc, 0x76f988da,
-  0x983e5152, 0xa831c66d, 0xb00327c8, 0xbf597fc7,
-  0xc6e00bf3, 0xd5a79147, 0x06ca6351, 0x14292967,
-  0x27b70a85, 0x2e1b2138, 0x4d2c6dfc, 0x53380d13,
-  0x650a7354, 0x766a0abb, 0x81c2c92e, 0x92722c85,
-  0xa2bfe8a1, 0xa81a664b, 0xc24b8b70, 0xc76c51a3,
-  0xd192e819, 0xd6990624, 0xf40e3585, 0x106aa070,
-  0x19a4c116, 0x1e376c08, 0x2748774c, 0x34b0bcb5,
-  0x391c0cb3, 0x4ed8aa4a, 0x5b9cca4f, 0x682e6ff3,
-  0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208,
-  0x90befffa, 0xa4506ceb, 0xbef9a3f7, 0xc67178f2
-};
-
-void
-sha2_256_init(uint *out)
-{
-#define sha2_256_init_inner_1(i) \
-  out[i] = sha2_init[i];
-
-  hash256_unroll(sha2_256_init_inner_1);
-}
-
-/* The state variable remapping is really contorted */
-#define sha2_stvar(vals, i, v) vals[(64+v-i) % 8]
-#define sha2_s0(a) (rotate(a, 30U) ^ rotate(a, 19U) ^ rotate(a, 10U))
-#define sha2_s1(a) (rotate(a, 26U) ^ rotate(a, 21U) ^ rotate(a, 7U))
-#if defined(AMD_BFI_INT)
-#pragma OPENCL EXTENSION cl_amd_media_ops : enable
-#define sha2_ch(a, b, c) amd_bytealign(a, b, c)
-#define sha2_ma(a, b, c) amd_bytealign((a^c), b, a)
-#else
-#define sha2_ch(a, b, c) (c ^ (a & (b ^ c)))
-#define sha2_ma(a, b, c) ((a & c) | (b & (a | c)))
-#endif
-
-void
-sha2_256_block(uint *out, uint *in)
-{
-  uint state[8], t1, t2;
-#if defined(PRAGMA_UNROLL)
-  int i;
-#endif
-
-#define sha2_256_block_inner_1(i) \
-  state[i] = out[i];
-  hash256_unroll(sha2_256_block_inner_1);
-
-#define sha2_256_block_inner_2(i) \
-  if (i >= 16) {              \
-    t1 = in[(i + 1) % 16];          \
-    t2 = in[(i + 14) % 16];          \
-    in[i % 16] += (in[(i + 9) % 16] +      \
-           (rotate(t1, 25U) ^ rotate(t1, 14U) ^ (t1 >> 3)) + \
-           (rotate(t2, 15U) ^ rotate(t2, 13U) ^ (t2 >> 10))); \
-  }                \
-  t1 = (sha2_stvar(state, i, 7) +          \
-        sha2_s1(sha2_stvar(state, i, 4)) +      \
-        sha2_ch(sha2_stvar(state, i, 4),        \
-          sha2_stvar(state, i, 5),        \
-          sha2_stvar(state, i, 6)) +      \
-        sha2_k[i] +            \
-        in[i % 16]);            \
-  t2 = (sha2_s0(sha2_stvar(state, i, 0)) +      \
-        sha2_ma(sha2_stvar(state, i, 0),        \
-          sha2_stvar(state, i, 1),        \
-          sha2_stvar(state, i, 2)));      \
-  sha2_stvar(state, i, 3) += t1;          \
-  sha2_stvar(state, i, 7) = t1 + t2;        \
-
-#if !defined(PRAGMA_UNROLL)
-  iter_64(sha2_256_block_inner_2);
-#else
-#pragma unroll 64
-  for (i = 0; i < 64; i++) { sha2_256_block_inner_2(i) }
-#endif
-
-#define sha2_256_block_inner_3(i) \
-  out[i] += state[i];
-
-  hash256_unroll(sha2_256_block_inner_3);
-}
-
-
-/*
- * RIPEMD160
- *
- * Data expected in little-endian format.
- */
-
-__constant uint ripemd160_iv[] = {
-  0x67452301, 0xEFCDAB89, 0x98BADCFE, 0x10325476, 0xC3D2E1F0 };
-__constant uint ripemd160_k[] = {
-  0x00000000, 0x5A827999, 0x6ED9EBA1, 0x8F1BBCDC, 0xA953FD4E };
-__constant uint ripemd160_kp[] = {
-  0x50A28BE6, 0x5C4DD124, 0x6D703EF3, 0x7A6D76E9, 0x00000000 };
-__constant uchar ripemd160_ws[] = {
-  0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15,
-  7, 4, 13, 1, 10, 6, 15, 3, 12, 0, 9, 5, 2, 14, 11, 8,
-  3, 10, 14, 4, 9, 15, 8, 1, 2, 7, 0, 6, 13, 11, 5, 12,
-  1, 9, 11, 10, 0, 8, 12, 4, 13, 3, 7, 15, 14, 5, 6, 2,
-  4, 0, 5, 9, 7, 12, 2, 10, 14, 1, 3, 8, 11, 6, 15, 13,
-};
-__constant uchar ripemd160_wsp[] = {
-  5, 14, 7, 0, 9, 2, 11, 4, 13, 6, 15, 8, 1, 10, 3, 12,
-  6, 11, 3, 7, 0, 13, 5, 10, 14, 15, 8, 12, 4, 9, 1, 2,
-  15, 5, 1, 3, 7, 14, 6, 9, 11, 8, 12, 2, 10, 0, 4, 13,
-  8, 6, 4, 1, 3, 11, 15, 0, 5, 12, 2, 13, 9, 7, 10, 14,
-  12, 15, 10, 4, 1, 5, 8, 7, 6, 2, 13, 14, 0, 3, 9, 11
-};
-__constant uchar ripemd160_rl[] = {
-  11, 14, 15, 12, 5, 8, 7, 9, 11, 13, 14, 15, 6, 7, 9, 8,
-  7, 6, 8, 13, 11, 9, 7, 15, 7, 12, 15, 9, 11, 7, 13, 12,
-  11, 13, 6, 7, 14, 9, 13, 15, 14, 8, 13, 6, 5, 12, 7, 5,
-  11, 12, 14, 15, 14, 15, 9, 8, 9, 14, 5, 6, 8, 6, 5, 12,
-  9, 15, 5, 11, 6, 8, 13, 12, 5, 12, 13, 14, 11, 8, 5, 6,
-};
-__constant uchar ripemd160_rlp[] = {
-  8, 9, 9, 11, 13, 15, 15, 5, 7, 7, 8, 11, 14, 14, 12, 6,
-  9, 13, 15, 7, 12, 8, 9, 11, 7, 7, 12, 7, 6, 15, 13, 11,
-  9, 7, 15, 11, 8, 6, 6, 14, 12, 13, 5, 14, 13, 13, 7, 5,
-  15, 5, 8, 11, 14, 14, 6, 14, 6, 9, 12, 9, 12, 5, 15, 8,
-  8, 5, 12, 9, 12, 5, 14, 6, 8, 13, 6, 5, 15, 13, 11, 11
-};
-
-#define ripemd160_val(v, i, n) (v)[(80+(n)-(i)) % 5]
-#define ripemd160_valp(v, i, n) (v)[5 + ((80+(n)-(i)) % 5)]
-#if defined(AMD_BFI_INT)
-#define ripemd160_f0(x, y, z) (x ^ y ^ z)
-#define ripemd160_f1(x, y, z) amd_bytealign(x, y, z)
-#define ripemd160_f2(x, y, z) (z ^ (x | ~y))
-#define ripemd160_f3(x, y, z) amd_bytealign(z, x, y)
-#define ripemd160_f4(x, y, z) (x ^ (y | ~z))
-#else
-#define ripemd160_f0(x, y, z) (x ^ y ^ z)
-#define ripemd160_f1(x, y, z) ((x & y) | (~x & z))
-#define ripemd160_f2(x, y, z) (z ^ (x | ~y))
-#define ripemd160_f3(x, y, z) ((x & z) | (y & ~z))
-#define ripemd160_f4(x, y, z) (x ^ (y | ~z))
-#endif
-#define ripemd160_round(i, in, vals, f, fp, t) do {      \
-    ripemd160_val(vals, i, 0) =        \
-      rotate(ripemd160_val(vals, i, 0) +    \
-             f(ripemd160_val(vals, i, 1),    \
-         ripemd160_val(vals, i, 2),    \
-         ripemd160_val(vals, i, 3)) +    \
-             in[ripemd160_ws[i]] +      \
-             ripemd160_k[i / 16],      \
-             (uint)ripemd160_rl[i]) +      \
-      ripemd160_val(vals, i, 4);      \
-    ripemd160_val(vals, i, 2) =        \
-      rotate(ripemd160_val(vals, i, 2), 10U);    \
-    ripemd160_valp(vals, i, 0) =        \
-      rotate(ripemd160_valp(vals, i, 0) +    \
-             fp(ripemd160_valp(vals, i, 1),    \
-          ripemd160_valp(vals, i, 2),    \
-          ripemd160_valp(vals, i, 3)) +    \
-             in[ripemd160_wsp[i]] +      \
-             ripemd160_kp[i / 16],      \
-             (uint)ripemd160_rlp[i]) +    \
-      ripemd160_valp(vals, i, 4);      \
-    ripemd160_valp(vals, i, 2) =        \
-      rotate(ripemd160_valp(vals, i, 2), 10U);  \
-  } while (0)
-
-void
-ripemd160_init(uint *out)
-{
-#define ripemd160_init_inner_1(i) \
-  out[i] = ripemd160_iv[i];
-
-  hash160_unroll(ripemd160_init_inner_1);
-}
-
-void
-ripemd160_block(uint *out, uint *in)
-{
-  uint vals[10], t;
-#if defined(PRAGMA_UNROLL)
-  int i;
-#endif
-
-#define ripemd160_block_inner_1(i) \
-  vals[i] = vals[i + 5] = out[i];
-
-  hash160_unroll(ripemd160_block_inner_1);
-
-#define ripemd160_block_inner_p0(i)    \
-  ripemd160_round(i, in, vals, \
-      ripemd160_f0, ripemd160_f4, t);
-#define ripemd160_block_inner_p1(i)    \
-  ripemd160_round((16 + i), in, vals,    \
-      ripemd160_f1, ripemd160_f3, t);
-#define ripemd160_block_inner_p2(i)    \
-  ripemd160_round((32 + i), in, vals,    \
-      ripemd160_f2, ripemd160_f2, t);
-#define ripemd160_block_inner_p3(i)    \
-  ripemd160_round((48 + i), in, vals,    \
-      ripemd160_f3, ripemd160_f1, t);
-#define ripemd160_block_inner_p4(i)    \
-  ripemd160_round((64 + i), in, vals,    \
-      ripemd160_f4, ripemd160_f0, t);
-
-#if !defined(PRAGMA_UNROLL)
-  iter_16(ripemd160_block_inner_p0);
-  iter_16(ripemd160_block_inner_p1);
-  iter_16(ripemd160_block_inner_p2);
-  iter_16(ripemd160_block_inner_p3);
-  iter_16(ripemd160_block_inner_p4);
-#else
-#pragma unroll 16
-  for (i = 0; i < 16; i++) { ripemd160_block_inner_p0(i); }
-#pragma unroll 16
-  for (i = 0; i < 16; i++) { ripemd160_block_inner_p1(i); }
-#pragma unroll 16
-  for (i = 0; i < 16; i++) { ripemd160_block_inner_p2(i); }
-#pragma unroll 16
-  for (i = 0; i < 16; i++) { ripemd160_block_inner_p3(i); }
-#pragma unroll 16
-  for (i = 0; i < 16; i++) { ripemd160_block_inner_p4(i); }
-#endif
-
-  t = out[1] + vals[2] + vals[8];
-  out[1] = out[2] + vals[3] + vals[9];
-  out[2] = out[3] + vals[4] + vals[5];
-  out[3] = out[4] + vals[0] + vals[6];
-  out[4] = out[0] + vals[1] + vals[7];
-  out[0] = t;
-}
-
 
 #ifdef TEST_KERNELS
 /*
@@ -1225,7 +950,6 @@ heap_invert(__global bn_word *z_heap, int batch)
 void
 hash_ec_point(uint *hash_out, __global bn_word *xy, __global bn_word *zip)
 {
-  uint hash1[16], hash2[16];
   bignum c, zi, zzi;
   bn_word wh, wl;
 
@@ -1254,63 +978,6 @@ hash_ec_point(uint *hash_out, __global bn_word *xy, __global bn_word *zip)
   // Only need the first 8 bytes of the X coordinate of the public key.
   hash_out[0] = c.d[7];
   hash_out[1] = c.d[6];
-}
-
-
-__kernel void
-hash_ec_point_get(__global uint *hashes_out,
-      __global bn_word *points_in, __global bn_word *z_heap)
-{
-  uint hash[5];
-  int i, p, cell, start;
-
-  cell = ((get_global_id(1) * get_global_size(0)) + get_global_id(0));
-  start = (((cell / ACCESS_STRIDE) * ACCESS_BUNDLE) +
-     (cell % ACCESS_STRIDE));
-  z_heap += start;
-
-  start = ((((2 * cell) / ACCESS_STRIDE) * ACCESS_BUNDLE) +
-     (cell % (ACCESS_STRIDE/2)));
-  points_in += start;
-
-  /* Complete the coordinates and hash */
-  hash_ec_point(hash, points_in, z_heap);
-
-  p = get_global_size(0);
-  i = p * get_global_id(1);
-  hashes_out += 5 * (i + get_global_id(0));
-
-  /* Output the hash in proper byte-order */
-#define hash_ec_point_get_inner_1(i)    \
-  hashes_out[i] = load_le32(hash[i]);
-
-  hash160_unroll(hash_ec_point_get_inner_1);
-}
-
-/*
- * Normally this would be one function that compared two hash160s.
- * This one compares a hash160 with an upper and lower bound in one
- * function to work around a problem with AMD's OpenCL compiler.
- */
-int
-hash160_ucmp_g(uint *a, __global uint *bound)
-{
-  uint gv;
-
-#define hash160_ucmp_g_inner_1(i)     \
-    gv = load_be32(bound[i]);  \
-    if (a[i] < gv) return -1;  \
-    if (a[i] > gv) break;
-
-  hash160_iter(hash160_ucmp_g_inner_1);
-
-#define hash160_ucmp_g_inner_2(i)       \
-    gv = load_be32(bound[5+i]);  \
-    if (a[i] < gv) return 0;  \
-    if (a[i] > gv) return 1;
-
-  hash160_iter(hash160_ucmp_g_inner_2);
-  return 0;
 }
 
 __kernel void

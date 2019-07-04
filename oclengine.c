@@ -1623,13 +1623,13 @@ vg_ocl_prefix_check(vg_ocl_context_t *vocp, int slot)
     vg_exec_context_calc_address(vxcp);
 
     vg_exec_context_consolidate_key(vxcp);
-    printf("\rPrvKey: ");
+    printf("\r");
     dumpbn(EC_KEY_get0_private_key(vxcp->vxc_key));
 
     pend = pubk;
     pubk_len = i2o_ECPublicKey(vxcp->vxc_key, &pend);
-    printf("PubKey: ");
-    dumphex(pubk, pubk_len);
+    // printf("PubKey: ");
+    // dumphex(pubk, pubk_len);
     fflush(stdout);
 
     res = 1;
