@@ -1,19 +1,20 @@
 /*
- * Vanitygen, vanity bitcoin address generator
+ * KoHMiner (based on Vanitygen, vanity bitcoin address generator)
  * Copyright (C) 2011 <samr7@cs.washington.edu>
+ * Copyright (C) 2019 Asen Kovachev (@asenski, GitHub: akovachev)
  *
- * Vanitygen is free software: you can redistribute it and/or modify
+ * KoHMiner is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Affero General Public License as published by
  * the Free Software Foundation, either version 3 of the License, or
- * any later version. 
+ * any later version.
  *
- * Vanitygen is distributed in the hope that it will be useful,
+ * KoHMiner is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU Affero General Public License for more details.
  *
  * You should have received a copy of the GNU Affero General Public License
- * along with Vanitygen.  If not, see <http://www.gnu.org/licenses/>.
+ * along with KoHMiner.  If not, see <http://www.gnu.org/licenses/>.
  */
 
 #include <stdio.h>
@@ -445,9 +446,9 @@ server_workitem_add(server_request_t *reqp, workitem_t *wip)
     avl_root_init(&pbatch->items);
     pbatch->total_value = 0;
     pbatch->pubkey = wip->pubkey;
-    pbatch->pubkey_hex = EC_POINT_point2hex(reqp->group, 
-          wip->pubkey, 
-          POINT_CONVERSION_UNCOMPRESSED, 
+    pbatch->pubkey_hex = EC_POINT_point2hex(reqp->group,
+          wip->pubkey,
+          POINT_CONVERSION_UNCOMPRESSED,
           NULL);
     pubkeybatch_avl_insert(&reqp->items, pbatch);
     reqp->nitems++;
@@ -461,7 +462,7 @@ server_workitem_add(server_request_t *reqp, workitem_t *wip)
   if (wip->pubkey && wip->pubkey != pbatch->pubkey)
     EC_POINT_free(wip->pubkey);
   wip->pubkey = pbatch->pubkey;
-  
+
   pbatch->nitems++;
   pbatch->total_value += wip->value;
   return 0;
@@ -1031,7 +1032,7 @@ main(int argc, char **argv)
       server_context_getwork(scp);
 
     pkb = most_valuable_pkb(scp);
-    
+
     if( pkb && pkb->total_value < min_value ) {
       fprintf(stderr,
         "Value of current work (%f BTC/Mkey) does not meet minimum value (%f BTC/Mkey)\n",
@@ -1040,7 +1041,7 @@ main(int argc, char **argv)
       was_sleeping = 1;
       pkb = NULL;
     }
-    
+
     /* If the work item is the same as the one we're executing,
        keep it */
     if (pkb && active_pkb &&
@@ -1088,14 +1089,14 @@ main(int argc, char **argv)
           fprintf(stderr,
              "WARNING: could not add pattern\n");
         }
-        
+
         assert(vcp->vc_npatterns);
       }
 
-      fprintf(stderr, 
-        "\nTotal value for current work: %f BTC/Mkey\n", 
+      fprintf(stderr,
+        "\nTotal value for current work: %f BTC/Mkey\n",
         pkb->total_value);
-      
+
       res = vg_context_start_threads(vcp);
       if (res)
         return 1;

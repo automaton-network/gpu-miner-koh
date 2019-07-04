@@ -1,19 +1,20 @@
 /*
- * Vanitygen, vanity bitcoin address generator
+ * KoHMiner (based on Vanitygen, vanity bitcoin address generator)
  * Copyright (C) 2011 <samr7@cs.washington.edu>
+ * Copyright (C) 2019 Asen Kovachev (@asenski, GitHub: akovachev)
  *
- * Vanitygen is free software: you can redistribute it and/or modify
+ * KoHMiner is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Affero General Public License as published by
  * the Free Software Foundation, either version 3 of the License, or
- * any later version. 
+ * any later version.
  *
- * Vanitygen is distributed in the hope that it will be useful,
+ * KoHMiner is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU Affero General Public License for more details.
  *
  * You should have received a copy of the GNU Affero General Public License
- * along with Vanitygen.  If not, see <http://www.gnu.org/licenses/>.
+ * along with KoHMiner.  If not, see <http://www.gnu.org/licenses/>.
  */
 
 #if !defined (__VG_UTIL_H__)
