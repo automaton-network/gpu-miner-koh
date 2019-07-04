@@ -1,5 +1,5 @@
 -----
-King of the Hill GPU Miner
+King of the Hill Miner (KoHMiner)
 -----
 
 **WARNING!** This program has not been thoroughly tested.  Please attempt importing an address first.  
